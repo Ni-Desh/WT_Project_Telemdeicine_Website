@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Medicus
 
 Medicus is a telemedicine website that aims to provide you with access to health care, anytime and anywhere. Your health and well-being is our top priority.
@@ -159,3 +160,6 @@ DB_NS=<your_db_namespace>
 > npm start
 ```
 12. Connect to website using url- "http://hostname:8000/" where **hostname** is your server's host name.
+=======
+# WT-CP_Telemedicine_Website
+>>>>>>> daedc0b480ddebcdeaaa27731dc8373e926b33a3
