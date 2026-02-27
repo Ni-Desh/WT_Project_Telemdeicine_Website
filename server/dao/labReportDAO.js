@@ -1,5 +1,5 @@
-import { ObjectId, Binary } from "mongodb"
-
+import mongodb from "mongodb"
+const { ObjectId,Binary } = mongodb;
 
 export default class LabReportDAO {
   static labReports

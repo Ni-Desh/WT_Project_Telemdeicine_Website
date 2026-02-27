@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { Form, FormRow, FormGroup, FormSubmit } from "../../components/form.js";
 
-
 export default function SignInForm(props) {
     const dispatch = useDispatch();
 
@@ -20,14 +19,14 @@ export default function SignInForm(props) {
     }
 
     async function handleSubmit(e) {
-        e.preventDefault();
+        if (e) e.preventDefault();
+        console.log("SignIn Attempted:", fields.username);
+
         try {
             const response = await fetch(`/api/auth/signin`, {
                 method: 'POST',
                 credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     username: fields.username,
                     password: fields.password
@@ -36,14 +35,12 @@ export default function SignInForm(props) {
 
             let data = await response.json();
             if (!response.ok) {
-                throw new Error(data.message);
+                throw new Error(data.message || "Invalid credentials");
             }
 
             dispatch({
                 type: "session/set",
-                payload: {
-                    ...data
-                }
+                payload: { ...data }
             });
         } catch (err) {
             console.error(`Failed to sign in. ${err}`);
@@ -59,7 +56,7 @@ export default function SignInForm(props) {
             <h5 className="font-weight-bold mb-3">Sign In.</h5>
             {fields.errorMessage &&
                 <FormRow className="justify-content-center">
-                    <div className="alert alert-danger p-2" role="alert">
+                    <div className="alert alert-danger p-2 w-100 text-center" role="alert">
                         {fields.errorMessage}
                     </div>
                 </FormRow>

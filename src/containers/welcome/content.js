@@ -33,27 +33,30 @@ function RegisterModal(props) {
     return (
         <FluidContainer>
             <Row>
-                <button type="button" class="btn btn-success col" 
+                {/* Fixed: class -> className */}
+                <button type="button" className="btn btn-success col" 
                     data-toggle="modal" data-target="#registerModal01">
                     Create a new Account
                 </button>
             </Row>
-            <div class="modal fade" id="registerModal01" tabindex="-1" 
+            {/* Fixed: class -> className, tabindex -> tabIndex */}
+            <div className="modal fade" id="registerModal01" tabIndex="-1" 
                 role="dialog" aria-labelledby="registerModalTitle" 
                     aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered" role="document">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 id="registerModalTitle" class="modal-title font-weight-bold">
+                <div className="modal-dialog modal-dialog-centered" role="document">
+                    <div className="modal-content">
+                        <div className="modal-header">
+                            {/* Fixed: class -> className */}
+                            <h5 id="registerModalTitle" className="modal-title font-weight-bold">
                                 Register today.
                             </h5>
                             <button ref={closeButtonRef} type="button" 
-                                class="close" data-dismiss="modal" 
+                                className="close" data-dismiss="modal" 
                                     aria-label="Close">
                                 <span aria-hidden="true">&times;</span>
                             </button>
                         </div>
-                        <div class="modal-body">
+                        <div className="modal-body">
                             <RegisterForm />
                         </div>
                     </div>

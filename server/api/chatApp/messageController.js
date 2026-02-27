@@ -1,10 +1,11 @@
-import { ObjectId } from "mongodb"
+import mongodb from 'mongodb';
+const { ObjectId} = mongodb;
 
-import { HttpBadRequestError, HttpUnauthorizedError, HttpInternalServerError } from "../errors"
+import { HttpBadRequestError, HttpUnauthorizedError, HttpInternalServerError } from "../errors.js"
 
-import UserDAO from "../../dao/userDAO"
-import MessageDAO from "../../dao/messageDAO"
-import { User, Message } from "../models"
+import UserDAO from "../../dao/userDAO.js"
+import MessageDAO from "../../dao/messageDAO.js"
+import { User, Message } from "../models.js"
 
 
 export default class MessageController {

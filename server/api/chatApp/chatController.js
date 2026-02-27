@@ -1,11 +1,13 @@
-import { ObjectId } from "mongodb"
+import mongodb from 'mongodb';
+const { ObjectId } = mongodb;
 
-import { HttpBadRequestError, HttpUnauthorizedError, HttpInternalServerError } from "../errors"
+import { HttpBadRequestError, HttpUnauthorizedError, HttpInternalServerError } from "../errors.js"
 
-import UserDAO from "../../dao/userDAO"
-import ChatDAO from "../../dao/chatDAO"
-import MessageDAO from "../../dao/messageDAO"
-import { User, Appointment, Chat } from "../models"
+import UserDAO from "../../dao/userDAO.js"
+import ChatDAO from "../../dao/chatDAO.js"
+import MessageDAO from "../../dao/messageDAO.js"
+// Added .js extension to models
+import { User, Appointment, Chat } from "../models.js" 
 
 
 // This class defines all APIs that are not directly called by Chat router.
@@ -95,7 +97,8 @@ export default class ChatController {
       res.json({success: true, id: response.id })
     } catch (err) {
       console.error(`Failed to add a new chat. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
+      // Added safety check for statusCode
+      res.status(err.statusCode || 500).json({message: err.message})
     }
   }
 
@@ -113,7 +116,7 @@ export default class ChatController {
       res.json({success: true})
     } catch (err) {
       console.error(`Failed to delete chat. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
+      res.status(err.statusCode || 500).json({message: err.message})
     }
   }
 
@@ -142,7 +145,7 @@ export default class ChatController {
       res.json({success: true})
     } catch (err) {
       console.error(`Failed to add a new active member. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
+      res.status(err.statusCode || 500).json({message: err.message})
     }
   }
 
@@ -168,7 +171,7 @@ export default class ChatController {
       res.json({success: true})
     } catch (err) {
       console.error(`Failed to delete active member. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
+      res.status(err.statusCode || 500).json({message: err.message})
     }
   }
 }

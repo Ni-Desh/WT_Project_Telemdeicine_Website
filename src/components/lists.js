@@ -1,53 +1,64 @@
 import React from 'react';
-import { Link } from "react-router-dom";
+import { useSelector } from 'react-redux';
 import { useExtendClass } from "./hooks.js";
 
-
-/* Component Definitions */
 export function List(props) {
-    return (
-        <div className={useExtendClass("list-group", props.className)}>
-            {props.children}
-        </div>
-    );
+    return <ul className={useExtendClass("list-group", props.className)}>{props.children}</ul>;
 }
 
-
-export function FlushedList(props) {
-    return (
-        <List className={useExtendClass("list-group-flush", props.className)}>
-            {props.children}
-        </List>
-  );
+export function ListItem(props) {
+    return <li className={useExtendClass("list-group-item", props.className)}>{props.children}</li>;
 }
-
-
-export function ListItem(props) {  
-    return (
-        <div className={useExtendClass("list-group-item", props.className)}>
-            {props.children}
-        </div>
-    );
-}
-
-
-export function ListLink(props) {  
-    return (
-        <Link to={props.url} 
-            className={useExtendClass("list-group-item list-group-action", props.className)}>
-            {props.children}
-        </Link>
-    );
-}
-
 
 export function ListButton(props) {
-    const { className, handleClick, ...otherProps } = props;
-
     return (
-        <button type="button" onClick={handleClick} { ...otherProps }
-            className={useExtendClass("list-group-item list-group-action", className)}>
+        <button 
+            type="button" 
+            name={props.name} 
+            value={props.value}
+            className={useExtendClass("list-group-item list-group-item-action", props.className)}
+            onClick={props.onClick}
+        >
             {props.children}
         </button>
+    );
+}
+
+export function ListLink(props) {
+    return (
+        <a href={props.href || "#"} className={useExtendClass("list-group-item list-group-item-action", props.className)} onClick={props.onClick}>
+            {props.children}
+        </a>
+    );
+}
+
+export function SearchResultsList({ onSelectDoctor }) {
+    const doctors = useSelector((state) => state.patient.doctors || []);
+    return (
+        <div className="mt-3">
+            <List>
+                {doctors.length > 0 ? doctors.map((doc) => (
+                    <ListButton 
+                        key={doc._id} 
+                        name="physician"
+                        value={`${doc.firstName} ${doc.lastName}`}
+                        onClick={(e) => onSelectDoctor && onSelectDoctor(e)}
+                    >
+                        <strong>Dr. {doc.firstName} {doc.lastName}</strong>
+                    </ListButton>
+                )) : <ListItem className="text-muted text-center">No doctors found.</ListItem>}
+            </List>
+        </div>
+    );
+}
+
+export function MedicalLocker() {
+    const records = useSelector((state) => state.patient.locker || []);
+    return (
+        <List>
+            {records.length > 0 ? records.map((record, index) => (
+                <ListItem key={index}><strong>{record.title}</strong></ListItem>
+            )) : <ListItem className="text-muted text-center">No records.</ListItem>}
+        </List>
     );
 }

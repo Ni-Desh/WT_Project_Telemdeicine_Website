@@ -38,7 +38,7 @@ export function NavBrand(props) {
     let className = useExtendClass("navbar-brand", props.className);
     if (props.isLink) {
         return(
-            <Link to={props.url} className={className} >{props.children}</Link>
+            <Link to={props.url || "#"} className={className} >{props.children}</Link>
         );
     } else {
         return (
@@ -90,7 +90,7 @@ export function NavDropdown(props) {
 export function NavLink(props) {
     return (
         <NavItem className="d-flex align-items-center">
-            <Link to={props.path} exact={props.exact} role={props.role}
+            <Link to={props.path || "#"} exact={props.exact} role={props.role}
                 className={useExtendClass("nav-link w-100", props.className)}
                 onClick={props.handleClick} data-toggle="tooltip" title={props.tooltip}>
                 {props.children}
@@ -99,10 +99,10 @@ export function NavLink(props) {
     );
 }
 
-
+// FIXED: Changed Link to use 'to' instead of 'href' and added fallback
 export function NavDropdownLink(props) {
     return (
-        <Link href="#" id={props.id} role="button"
+        <Link to={props.to || props.path || "#"} id={props.id} role="button"
             className={useExtendClass("nav-link dropdown-toggle", props.className)} 
                 data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
             {props.children}
@@ -119,18 +119,19 @@ export function NavDropdownMenu(props) {
     );
 }
 
+// FIXED: Changed 'class' to 'className'
 export function NavDropdownMenuHeader(props) {
     return (
-        <h6 class={useExtendClass("dropdown-header", props.className)}>
+        <h6 className={useExtendClass("dropdown-header", props.className)}>
             {props.children}
         </h6>
     );
 }
 
-
+// FIXED: Added fallback for props.path to prevent 'undefined' error
 export function NavDropdownMenuItem(props) {
     return (
-        <Link to={props.path} exact={props.exact}
+        <Link to={props.path || props.to || "#"} exact={props.exact}
             className={useExtendClass("dropdown-item", props.className)}
                 onClick={props.handleClick} data-toggle="tooltip" title={props.title}>
             {props.children}

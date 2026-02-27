@@ -1,641 +1,252 @@
-import { readFile } from "fs/promises"
+import mongodb from 'mongodb';
+const { ObjectId } = mongodb;
+import bcrypt from 'bcryptjs';
 
-import { ObjectId } from "mongodb"
-import { HttpBadRequestError, HttpInternalServerError } from "../errors"
+import { HttpBadRequestError, HttpUnauthorizedError, HttpInternalServerError } from "../errors.js"
+import { User, Degree, Job, Service, Insurance, Payment, Medication, LabReport } from "../models.js"
 
-import { User, Session, Degree, Job, Service,
-  Insurance, Payment, Medication, LabReport } from "../models"
+import UserDAO from "../../dao/userDAO.js"
+import SessionDAO from "../../dao/sessionDAO.js"
+import DegreeDAO from "../../dao/degreeDAO.js"
+import JobDAO from "../../dao/jobDAO.js"
+import ServiceDAO from "../../dao/serviceDAO.js"
+import InsuranceDAO from "../../dao/insuranceDAO.js"
+import PaymentDAO from "../../dao/paymentDAO.js"
+import LabReportDAO from "../../dao/labReportDAO.js"
+import MedicationDAO from "../../dao/medicationDAO.js"
 
-import UserDAO from "../../dao/userDAO"
-import DegreeDAO from "../../dao/degreeDAO"
-import JobDAO from "../../dao/jobDAO"
-import ServiceDAO from "../../dao/serviceDAO"
-import InsuranceDAO from "../../dao/insuranceDAO"
-import PaymentDAO from "../../dao/paymentDAO"
-import LabReportDAO from "../../dao/labReportDAO"
-import MedicationDAO from "../../dao/medicationDAO"
+import { AppointmentApi } from "../appointmentApp/controller.js"
 
-import { AppointmentApi } from "../appointmentApp/controller"
-
-
-// This class defines all APIs that are not directly called by User router.
-// It is done to factor out shared code that can be called by multiple router APIs.
 export class UserApi {
   static async deleteUser(username, profilePhotoId) {
     try {
-      const appointmentResponse = await AppointmentApi.deleteAppointments({ "patient.username": username })
-
-      const insuranceResponse = await InsuranceDAO.deleteInsurances({ username: username })
-      if (!insuranceResponse.success) {
-        throw new HttpInternalServerError(insuranceResponse.error)
-      }
-
-      const serviceResponse = await ServiceDAO.deleteServices({ username: username })
-      if (!serviceResponse.success) {
-        throw new HttpInternalServerError(serviceResponse.error)
-      }
-
-      const paymentResponse = await PaymentDAO.deletePayments({ fromUsername: username })
-      if (!paymentResponse.success) {
-        throw new HttpInternalServerError(paymentResponse.error)
-      }
-
-      const jobResponse = await JobDAO.deleteJobs({ username: username })
-      if (!jobResponse.success) {
-        throw new HttpInternalServerError(jobResponse.error)
-      }
-
-      const degreeResponse = await DegreeDAO.deleteDegrees({ username: username })
-      if (!degreeResponse.success) {
-        throw new HttpInternalServerError(degreeResponse.error)
-      }
-
-      if (profilePhotoId !== null) {
-        const photoResponse = await UserDAO.deletePhoto(profilePhotoId)
-        if (!photoResponse.success) {
-          throw new HttpInternalServerError(photoResponse.error)
-        }
-      }
-
-      const userResponse = await UserDAO.deleteUser(username)
-      if (!userResponse.success) {
-        throw new HttpInternalServerError(userResponse.error)
-      }
-    } catch (err) {
-      throw(err)
-    }
+      await AppointmentApi.deleteAppointments({ "patient.username": username })
+      await UserDAO.deleteUser(username)
+      if (profilePhotoId) await UserDAO.deletePhoto(profilePhotoId)
+      return { success: true }
+    } catch (err) { throw err }
   }
 }
 
-
-// This class defines all middleware APIs that are directly called by User router.
 export default class UserController {
-  static async getUsers(req, res, next) {
+  
+  // --- SIGNUP LOGIC ---
+  static async signup(req, res) {
     try {
-      const view = (req.query.view) ? req.query.view: ""
-      const search = (req.query.search !== undefined) ? req.query.search: null
-      const page = (req.query.page) ? parseInt(req.query.page, 10): 0
-      const limit = (req.query.limit) ? parseInt(req.query.limit, 10): 10
-
-      let filter
-      if (view === "patient") {
-        filter = { isPhysician: false }
-      } else {
-        filter = { isPhysician: true }
+      const userInfo = req.body
+      const existingUser = await UserDAO.getUser(userInfo.username)
+      
+      if (existingUser) {
+        return res.status(400).json({ message: "Username already exists." })
       }
 
-      let result
-      if (search !== null) {
-        if (search === "") {
-          result = []
-        } else {
-          const queryRegex = new RegExp(search, 'i');
-          const searchQuery = {
-            $or: [
-              { username: queryRegex },
-              { fullName: queryRegex },
-              { specialization: queryRegex }
-            ]
-          }
-
-          result = await UserDAO.searchUsers({filter, searchQuery, page, limit})
+      const result = await UserDAO.addUser(userInfo)
+      
+      if (result.success) {
+        const newUser = await UserDAO.getUser(userInfo.username)
+        
+        if (req.session) {
+            req.session.username = userInfo.username
+            req.session.isPhysician = Boolean(userInfo.isPhysician)
+            // Essential for some session stores to persist before redirect
+            await new Promise((resolve) => req.session.save(resolve));
         }
+
+        return res.status(201).json({ 
+            success: true, 
+            message: "User registered successfully",
+            username: newUser.username,
+            isPhysician: newUser.isPhysician,
+            user: new User(newUser).toJson() 
+        })
       } else {
-        result = await UserDAO.getUsers({filter, page, limit})
+        return res.status(500).json({ message: "Failed to save user in database." })
       }
-
-      res.json(result.map(item => {
-        const user = new User(item)
-        return user.toShortJson()
-      }))
-    } catch (err) {
-      console.error(`Failed to get users. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
+    } catch (err) { 
+      console.error("Signup Error:", err);
+      return res.status(500).json({ message: err.message }) 
     }
   }
 
-  static async getUser(req, res, next) {
+  // --- SIGNIN LOGIC ---
+  static async signin(req, res) {
     try {
-      const username = req.params.username
-      const result = await UserDAO.getUser(username)
-      res.json(new User(result).toJson())
-    } catch (err) {
-      console.error(`Failed to get user: ${err}`)
-      res.status(500).json({message: err.message})
+      const { username, password } = req.body
+      const userDoc = await UserDAO.getUser(username)
+      
+      console.log("---------- LOGIN DEBUG ----------");
+      if (!userDoc) {
+        console.log(`❌ USER NOT FOUND: ${username}`);
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      let isMatch = false;
+      const dbPassword = userDoc.password.toString().trim();
+      const typedPassword = password.toString().trim();
+
+      if (dbPassword.startsWith('$2')) {
+          // Bcrypt Hash Comparison
+          isMatch = await bcrypt.compare(typedPassword, dbPassword);
+      } else {
+          // Plain Text Comparison
+          isMatch = (dbPassword === typedPassword);
+      }
+
+      if (!isMatch) {
+        console.log(`❌ PASSWORD MISMATCH for ${username}`);
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      console.log(`✅ LOGIN SUCCESS: ${username}`);
+      console.log("---------------------------------");
+
+      await SessionDAO.addSession(username)
+      
+      if (req.session) {
+        req.session.username = username
+        req.session.isPhysician = userDoc.isPhysician
+        await new Promise((resolve) => req.session.save(resolve));
+      }
+
+      return res.status(200).json({ 
+        success: true, 
+        username: userDoc.username,
+        isPhysician: userDoc.isPhysician,
+        user: new User(userDoc).toJson() 
+      })
+    } catch (err) { 
+        console.error("Signin Error:", err);
+        return res.status(400).json({ message: err.message }) 
     }
   }
 
-  static async updateUser(req, res, next) {
+  static async logout(req, res) {
+    if (req.session && req.session.username) {
+        await SessionDAO.deleteSession(req.session.username)
+        req.session.destroy()
+    }
+    return res.json({ success: true })
+  }
+
+  // --- PROFILE & DATA LOGIC ---
+  // UPDATED LOGIC to handle new DAO structure
+  static async getUsers(req, res) {
     try {
-      const username = req.params.username
-      const updateInfo = req.body
-      if (!updateInfo || (updateInfo && !Object.keys(updateInfo).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
+      // Create filter based on query parameters
+      const filter = { isPhysician: req.query.view === "physician" };
+      
+      // If a search query exists, add it to the filter
+      if (req.query.search) {
+          // Using regex for partial name matching, case-insensitive
+          filter.name = { $regex: req.query.search, $options: 'i' };
       }
 
-      const notUpdatableFields = ["_id", "id", "username", "password", "isPhysician"]
-
-      for (const field of notUpdatableFields) {
-        if (updateInfo.hasOwnProperty(field)) {
-          throw new HttpBadRequestError(`Invalid request. Cannot update field: '${field}'.`)
-        }
-      }
-
-      if (updateInfo.dob) {
-        updateInfo.dob = new Date(updateInfo.dob)
-      }
-
-      const updateResponse = await UserDAO.updateUser(username, updateInfo)
-      if (!updateResponse.success) {
-        throw new HttpInternalServerError(updateResponse.error)
-      }
-
-      res.json({ success: true })
+      // Call UserDAO with the filter object
+      const result = await UserDAO.getUsers({ filter: filter }) || []; 
+      
+      return res.json(result.map(u => new User(u).toShortJson()))
     } catch (err) {
-      console.error(`Failed to update user. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
+      console.error("getUsers Error:", err);
+      return res.status(500).json({ message: err.message }) 
     }
   }
 
-  static async deleteUser(req, res, next) {
+  static async getUser(req, res) {
+    const result = await UserDAO.getUser(req.params.username)
+    if (!result) return res.status(404).json({ message: "User not found" });
+    return res.json(new User(result).toJson())
+  }
+
+  static async deleteUser(req, res) {
     try {
-      const username = req.params.username
-      const session = req.session
-
-      if (session.username !== username) {
-        throw new HttpUnauthorizedError("Invalid request. Cannot delete another user account.")
-      }
-
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
+      const user = await UserDAO.getUser(req.params.username)
       await UserApi.deleteUser(user.username, user.profilePhotoId)
-
-      res.json({ success: true })
-    } catch (err) {
-      console.error(`Failed to delete user. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
+      return res.json({ success: true })
+    } catch (err) { return res.status(500).json({ message: err.message }) }
   }
 
-  static async getPhoto(req, res, next) {
-    try {
-      const username = req.params.username
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const photoId = req.params.id
-      const photoStream = await UserDAO.getPhoto(photoId)
-      if (photoStream !== null) {
-        photoStream.pipe(res)
-      } else {
-        res.redirect('/public/imgs/person.png')
-      }
-    } catch (err) {
-      console.error(`Failed to get user photo. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
+  static async updateUser(req, res) {
+    await UserDAO.updateUser(req.params.username, req.body)
+    return res.json({ success: true })
   }
 
-  static async addPhoto(req, res, next) {
-    try {
-      const username = req.params.username
-      const addInfo = req.body
-
-      try {
-        const user = await UserDAO.getUser(username)
-        if (!user || (user && !Object.keys(user).length)) {
-          throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-        }
-
-        const isProfilePhoto = addInfo.isProfilePhoto
-        if (Boolean(isProfilePhoto)) {
-          if (user.profilePhotoId) {
-            const deleteResponse = await UserDAO.deletePhoto(user.profilePhotoId)
-          }
-
-          const response = await UserDAO.updateUser(username, { profilePhotoId: ObjectId(req.file.id) });
-          if (!response.success) {
-            throw new HttpInternalServerError(response.error)
-          }
-        }
-
-        res.json({ success: true, id: req.file.id})
-
-      } catch (err) {
-        // Cleanup uploaded file.
-        const deleteResponse = await UserDAO.deletePhoto(req.file.id)
-        if (!deleteResponse.success) {
-          throw new HttpInternalServerError(deleteResponse.error)
-        }
-
-        throw(err)
-      }
-    } catch (err) {
-      console.error(`Failed to add user photo. ${err}`);
-      res.status(500).json({message: err.message})
-    }
+  static async addPhoto(req, res) {
+    await UserDAO.updateUser(req.params.username, { profilePhotoId: new ObjectId(req.file.id) })
+    return res.json({ success: true, id: req.file.id })
   }
 
-  static async deletePhoto(req, res, next) {
-    try {
-      const username = req.params.username
-      const photoId = req.params.id
-
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const response = await UserDAO.deletePhoto(photoId)
-      if (!response.success) {
-        throw new HttpInternalServerError(response.error)
-      }
-
-      res.json({ success: true })
-    } catch (err) {
-      console.error(`Failed to delete user photo. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
+  static async getPhoto(req, res) {
+    const stream = await UserDAO.getPhoto(req.params.id)
+    return stream ? stream.pipe(res) : res.redirect('/public/imgs/person.png')
   }
 
-  static async getDegrees(req, res, next) {
-    try {
-      const username = req.params.username
-      const page = (req.query.page) ? parseInt(req.query.page, 10): 0
-      const limit = (req.query.limit) ? parseInt(req.query.limit, 10): 10
-
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const filter = {
-        username: username
-      }
-
-      const degrees = await DegreeDAO.getDegrees({filter: filter, page: page, limit: limit})
-      res.json(degrees.map(item => {
-        const degree = new Degree(item)
-        return degree.toJson()
-      }))
-    } catch (err) {
-      console.error(`Failed to get user degrees. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
+  static async deletePhoto(req, res) {
+    await UserDAO.deletePhoto(req.params.id)
+    return res.json({ success: true })
   }
 
-  static async addDegree(req, res, next) {
-    try {
-      const degreeInfo = req.body;
-      if (!degreeInfo || (degreeInfo && !Object.keys(degreeInfo).length)) {
-        throw new Error("Invalid request. Bad input parameters.")
-      }
-
-      const username = req.params.username
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const response = await DegreeDAO.addDegree({
-        username: username,
-        degree: degreeInfo.degree,
-        fromDate: new Date(degreeInfo.fromDate),
-        toDate: new Date(degreeInfo.toDate),
-        university: degreeInfo.university
-      })
-      if (!response.success) {
-        throw new HttpInternalServerError(response.error)
-      }
-
-      res.status(201).json({ success: true, id: response.id })
-    } catch (err) {
-      console.error(`Failed to add user degree. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
+  static async getDegrees(req, res) {
+    const result = await DegreeDAO.getDegrees({ filter: { username: req.params.username } })
+    return res.json(result.map(d => new Degree(d).toJson()))
+  }
+  static async addDegree(req, res) {
+    const resp = await DegreeDAO.addDegree({ username: req.params.username, ...req.body })
+    return res.status(201).json(resp)
+  }
+  static async deleteDegree(req, res) {
+    await DegreeDAO.deleteDegree(req.params.id)
+    return res.json({ success: true })
   }
 
-  static async deleteDegree(req, res, next) {
-    try {
-      const username = req.params.username
-      const degreeId = req.params.id
-
-      const response = await DegreeDAO.deleteDegree(degreeId)
-      if (!response.success) {
-        throw new HttpInternalServerError(response.error)
-      }
-
-      res.json({ success: true })
-    } catch (err) {
-      console.error(`Failed to delete user degree. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
+  static async getJobs(req, res) {
+    const result = await JobDAO.getJobs({ filter: { username: req.params.username } })
+    return res.json(result.map(j => new Job(j).toJson()))
+  }
+  static async addJob(req, res) {
+    const resp = await JobDAO.addJob({ username: req.params.username, ...req.body })
+    return res.status(201).json(resp)
+  }
+  static async deleteJob(req, res) {
+    await JobDAO.deleteJob(req.params.id)
+    return res.json({ success: true })
   }
 
-  static async getJobs(req, res, next) {
-    try {
-      const username = req.params.username
-      const page = (req.query.page) ? parseInt(req.query.page, 10): 0
-      const limit = (req.query.limit) ? parseInt(req.query.limit, 10): 10
-
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const filter = {
-        username: username
-      }
-
-      const jobs = await JobDAO.getJobs({filter: filter, page: page, limit: limit})
-      res.json(jobs.map(item => {
-        const job = new Job(item)
-        return job.toJson()
-      }))
-    } catch (err) {
-      console.error(`Failed to get user jobs. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
+  static async getServices(req, res) {
+    const result = await ServiceDAO.getServices({ filter: { username: req.params.username } })
+    return res.json(result.map(s => new Service(s).toJson()))
+  }
+  static async addService(req, res) {
+    const resp = await ServiceDAO.addService({ username: req.params.username, ...req.body })
+    return res.status(201).json(resp)
+  }
+  static async deleteService(req, res) {
+    await ServiceDAO.deleteService(req.params.id)
+    return res.json({ success: true })
   }
 
-  static async addJob(req, res, next) {
-    try {
-      const jobInfo = req.body;
-      if (!jobInfo || (jobInfo && !Object.keys(jobInfo).length)) {
-        throw new Error("Invalid request. Bad input parameters.")
-      }
-
-      const username = req.params.username
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const response = await JobDAO.addJob({
-        username: username,
-        title: jobInfo.title,
-        fromDate: new Date(jobInfo.fromDate),
-        toDate: new Date(jobInfo.toDate),
-        company: jobInfo.company
-      })
-      if (!response.success) {
-        throw new HttpInternalServerError(response.error)
-      }
-
-      res.status(201).json({ success: true, id: response.id })
-    } catch (err) {
-      console.error(`Failed to add user job. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
+  static async getInsurances(req, res) {
+    const result = await InsuranceDAO.getInsurances({ filter: { username: req.params.username } })
+    return res.json(result.map(i => new Insurance(i).toJson()))
+  }
+  static async addInsurance(req, res) {
+    const resp = await InsuranceDAO.addInsurance({ username: req.params.username, ...req.body })
+    return res.status(201).json(resp)
+  }
+  static async deleteInsurance(req, res) {
+    await InsuranceDAO.deleteInsurance(req.params.id)
+    return res.json({ success: true })
   }
 
-  static async deleteJob(req, res, next) {
-    try {
-      const username = req.params.username
-      const jobId = req.params.id
-
-      const response = await JobDAO.deleteJob(jobId)
-      if (!response.success) {
-        throw new HttpInternalServerError(response.error)
-      }
-
-      res.json({ success: true })
-    } catch (err) {
-      console.error(`Failed to delete user job. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
+  static async getPayments(req, res) {
+    const result = await PaymentDAO.getPayments({ filter: { fromUsername: req.params.username } })
+    return res.json(result.map(p => new Payment(p).toJson()))
   }
-
-  static async getServices(req, res, next) {
-    try {
-      const username = req.params.username
-      const page = (req.query.page) ? parseInt(req.query.page, 10): 0
-      const limit = (req.query.limit) ? parseInt(req.query.limit, 10): 10
-
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const filter = {
-        username: username
-      }
-
-      const services = await ServiceDAO.getServices({filter: filter, page: page, limit: limit, reverse: true})
-      res.json(services.map(item => {
-        const service = new Service(item)
-        return service.toJson()
-      }))
-    } catch (err) {
-      console.error(`Failed to get user services. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
+  static async getReports(req, res) {
+    const result = await LabReportDAO.getLabReports({ filter: { fromUsername: req.params.username } })
+    return res.json(result.map(r => new LabReport(r).toJson()))
   }
-
-  static async addService(req, res, next) {
-    try {
-      const serviceInfo = req.body;
-      if (!serviceInfo || (serviceInfo && !Object.keys(serviceInfo).length)) {
-        throw new Error("Invalid request. Bad input parameters.")
-      }
-
-      const username = req.params.username
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const rateAsNumber = Number(serviceInfo.rate)
-      if (rateAsNumber === NaN || rateAsNumber < 0) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const response = await ServiceDAO.addService({
-        username: username,
-        name: serviceInfo.name,
-        rate: rateAsNumber
-      })
-      if (!response.success) {
-        throw new HttpInternalServerError(response.error)
-      }
-
-      res.status(201).json({ success: true, id: response.id })
-    } catch (err) {
-      console.error(`Failed to add user service. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
-  }
-
-  static async deleteService(req, res, next) {
-    try {
-      const username = req.params.username
-      const serviceId = req.params.id
-
-      const response = await ServiceDAO.deleteService(serviceId)
-      if (!response.success) {
-        throw new HttpInternalServerError(response.error)
-      }
-
-      res.json({ success: true })
-    } catch (err) {
-      console.error(`Failed to delete user service. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
-  }
-
-  static async getInsurances(req, res, next) {
-    try {
-      const username = req.params.username
-      const page = (req.query.page) ? parseInt(req.query.page, 10): 0
-      const limit = (req.query.limit) ? parseInt(req.query.limit, 10): 10
-
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const filter = {
-        username: username
-      }
-
-      const insurances = await InsuranceDAO.getInsurances({filter: filter, page: page, limit: limit})
-      res.json(insurances.map(item => {
-        const insurance = new Insurance(item)
-        return insurance.toJson()
-      }))
-    } catch (err) {
-      console.error(`Failed to get user insurances. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
-  }
-
-  static async addInsurance(req, res, next) {
-    try {
-      const insuranceInfo = req.body;
-      if (!insuranceInfo || (insuranceInfo && !Object.keys(insuranceInfo).length)) {
-        throw new Error("Invalid request. Bad input parameters.")
-      }
-
-      const username = req.params.username
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const response = await InsuranceDAO.addInsurance({
-        username: username,
-        insuranceId: insuranceInfo.insuranceId,
-        providerName: insuranceInfo.providerName,
-        expiryDate: new Date(insuranceInfo.expiryDate)
-      })
-      if (!response.success) {
-        throw new HttpInternalServerError(response.error)
-      }
-
-      res.status(201).json({ success: true, id: response.id })
-    } catch (err) {
-      console.error(`Failed to add user insurance. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
-  }
-
-  static async deleteInsurance(req, res, next) {
-    try {
-      const username = req.params.username
-      const insuranceId = req.params.id
-
-      const response = await InsuranceDAO.deleteInsurance(insuranceId)
-      if (!response.success) {
-        throw new HttpInternalServerError(response.error)
-      }
-
-      res.json({ success: true })
-    } catch (err) {
-      console.error(`Failed to delete user insurance. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
-  }
-
-  static async getPayments(req, res, next) {
-    try {
-      const username = req.params.username
-      const page = (req.query.page) ? parseInt(req.query.page, 10): 0
-      const limit = (req.query.limit) ? parseInt(req.query.limit, 10): 10
-
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const filter = {
-        fromUsername: username
-      }
-
-      const payments = await PaymentDAO.getPayments({filter: filter, page: page, limit: limit})
-      res.json(payments.map(item => {
-        const payment = new Payment(item)
-        return payment.toJson()
-      }))
-    } catch (err) {
-      console.error(`Failed to get user payments. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
-  }
-
-  static async getMedications(req, res, next) {
-    try {
-      const username = req.params.username
-      const page = (req.query.page) ? parseInt(req.query.page, 10): 0
-      const limit = (req.query.limit) ? parseInt(req.query.limit, 10): 10
-
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const filter = {
-        toUsername: username
-      }
-
-      const medications = await MedicationDAO.getMedications({filter: filter, page: page, limit: limit, reverse: true})
-      res.json(medications.map(item => {
-        const medication = new Medication(item)
-        return medication.toJson()
-      }))
-    } catch (err) {
-      console.error(`Failed to get user medications. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
-  }
-
-  static async getReports(req, res, next) {
-    try {
-      const username = req.params.username
-      const page = (req.query.page) ? parseInt(req.query.page, 10): 0
-      const limit = (req.query.limit) ? parseInt(req.query.limit, 10): 10
-
-      const user = await UserDAO.getUser(username)
-      if (!user || (user && !Object.keys(user).length)) {
-        throw new HttpBadRequestError("Invalid request. Bad input parameters.")
-      }
-
-      const filter = {
-        fromUsername: username
-      }
-
-      const labReports = await LabReportDAO.getLabReports({filter: filter, page: page, limit: limit, reverse: true})
-      res.json(labReports.map(item => {
-        const labReport = new LabReport(item)
-        return labReport.toJson()
-      }))
-    } catch (err) {
-      console.error(`Failed to get user reports. ${err}`);
-      res.status(err.statusCode).json({message: err.message})
-    }
+  static async getMedications(req, res) {
+    const result = await MedicationDAO.getMedications({ filter: { toUsername: req.params.username } })
+    return res.json(result.map(m => new Medication(m).toJson()))
   }
 }

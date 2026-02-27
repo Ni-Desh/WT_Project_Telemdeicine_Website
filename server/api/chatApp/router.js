@@ -1,6 +1,6 @@
 import { Router } from "express"
-import ChatCtrl from "./chatController"
-import MessageCtrl from "./messageController"
+import ChatCtrl from "./chatController.js"
+import MessageCtrl from "./messageController.js"
 
 
 const router = new Router()

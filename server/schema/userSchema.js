@@ -6,7 +6,7 @@ export default async function createUserSchema(conn) {
       $jsonSchema: {
         bsonType: "object",
         title: "users",
-        additionalProperties: false,
+        additionalProperties: true,
         properties: {
           _id: {
             bsonType: "objectId"

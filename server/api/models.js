@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
-import { UnauthorizedError } from "./errors"
+import { UnauthorizedError } from "./errors.js"
 
 
 export class User {

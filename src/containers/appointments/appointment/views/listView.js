@@ -7,19 +7,38 @@ import { Loader } from '../../../../components/loaders';
 import ManageBar from '../manageBar';
 import { AppointmentTitle, DisplayName, Status, StatusIndicator } from "../utils";
 
-
 export default function AppointmentListView(props) {
+    // 1. Handle Loading State
     if (props.isLoading) {
         return (
             <Loader isLoading={props.isLoading} />
         );
     }
 
+    // 2. Safety check: If no appointment data, don't crash the app
+    if (!props.appointment) {
+        return null;
+    }
+
     const appointmentStartTime = new Date(props.appointment.startTime);
     const appointmentEndTime = new Date(props.appointment.endTime);
 
+    // 3. Selection Handler (Fixes "Nothing happens")
+    // If this list is used for picking a doctor, we call the onSelect prop
+    const handleItemClick = () => {
+        if (props.onSelectDoctor) {
+            console.log("🎯 ListView Item Selected:", props.appointment.id);
+            props.onSelectDoctor(props.appointment);
+        }
+    };
+
     return (
-        <FluidContainer className="md-appt">
+        /* FIXED: The key should be handled by the parent .map(), 
+           but we ensure the container is clickable if needed */
+        <FluidContainer 
+            className={`md-appt ${props.onSelectDoctor ? 'md-clickable' : ''}`}
+            onClick={handleItemClick}
+        >
             <Row>
                 <Col className="col-auto px-0 d-xl-none">
                     <StatusIndicator status={props.appointment.status} />

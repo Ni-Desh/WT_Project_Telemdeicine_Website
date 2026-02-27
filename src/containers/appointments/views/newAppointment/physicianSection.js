@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { FormGroup, FormLabel } from '../../../../components/form';
 import { List, ListButton } from '../../../../components/lists';
-import { AutoLoader } from '../../../../components/loaders';
 import { Username } from '../../../../components/users';
 import { PhysicianItem } from './utils';
 
-
 export default function PhysicianSection(props) {
-    const { id, name, handleClick, ...otherProps } = props;
+    const { id, name, handleClick, currentStep, ...otherProps } = props;
+    const session = useSelector(state => state.session);
 
     const [state, setState] = useState({
         query: "",
@@ -15,116 +15,85 @@ export default function PhysicianSection(props) {
         limit: 25
     });
 
-    const getPhysicians = useCallback( async({search='', page=0, limit=10}) => {
+    const getPhysicians = useCallback(async ({ search = '', page = 0, limit = 10 }) => {
         try {
-            const url = `/api/users`;
-            const searchParams = new URLSearchParams();
-            searchParams.append('view', 'physician');
-            searchParams.append('search', search);
-            searchParams.append('page', page);
-            searchParams.append('limit', limit);
+            // UPDATED LOGIC: Fallback to localStorage if Redux session is empty
+            const loggedInUser = JSON.parse(localStorage.getItem('loggedInUser') || '{}');
+            const token = session.authToken || session.token || loggedInUser.token;
 
+            if (!token) {
+                console.warn("No token found!");
+                return [];
+            }
+
+            const url = `/api/users`;
+            const searchParams = new URLSearchParams({ view: 'physician', search, page, limit });
+            
             const response = await fetch(`${url}?${searchParams.toString()}`, {
-                headers: {
-                    'Authorization': `Bearer ${props.session.authToken}`
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
                 }
             });
 
-            let newPhysicians = await response.json();
-            if (!response.ok) {
-                throw new Error(newPhysicians.message);
-            }
-
-            return newPhysicians;
+            const data = await response.json();
+            // Ensure we always return an array
+            return response.ok ? (Array.isArray(data) ? data : (data.physicians || [])) : [];
         } catch (err) {
-            throw(err);
+            console.error("Fetch error:", err);
+            return [];
         }
-    })
+    }, [session]);
 
     useEffect(() => {
-        async function load() {
-            try {
-                const newPhysicians = await getPhysicians({
-                    search: state.query,
-                    page: 0,
-                    limit: state.limit
-                });
-
-                setState(prevState => {
-                    return {
-                        ...prevState,
-                        physicians: [...newPhysicians]
+        if (currentStep === 1) {
+            getPhysicians({ search: state.query, page: 0, limit: state.limit })
+                .then(data => {
+                    if (Array.isArray(data)) {
+                        setState(s => ({ ...s, physicians: data }));
                     }
                 });
-            } catch (err) {
-                console.log(`Failed to load physicians based on search. ${err}`);
-            }
         }
+    }, [state.query, state.limit, getPhysicians, currentStep]);
 
-        load();
-    }, [state.query, state.limit]);
-
-    async function appendPhysicians() {
-        try {
-            const newPhysicians = await getPhysicians({
-                search: state.query,
-                page: Math.ceil(state.physicians.length / state.limit),
-                limit: state.limit
-            });
-
-            setState(prevState => {
-                const updatedPhysicians = [...prevState.physicians, ...newPhysicians];
-                return {
-                    ...prevState,
-                    physicians: updatedPhysicians
-                }
-            });
-        } catch (err) {
-            console.error(`Failed to append to physician suggestions. ${err}`);
-        }
-    }
-
-    async function handleChange(e) {
-        setState({
-            ...state,
-            [e.target.name]: e.target.value,
-            physicians: []
-        });
-    }
-
-    if (props.currentStep !== 1) {
-        return null;
-    }
+    if (currentStep !== 1) return null;
 
     return (
         <>
             <FormGroup>
                 <FormLabel className="text-muted">Select a Physician</FormLabel>
-                <input id={id} type="text" className="form-control"
-                    name="query" value={state.query} onChange={handleChange}
-                        placeholder="Full Name or Username" {...otherProps} />
+                <input 
+                    id={id} 
+                    type="text" 
+                    className="form-control"
+                    name="query" 
+                    value={state.query} 
+                    onChange={(e) => setState({...state, query: e.target.value})}
+                    placeholder="Search by name or username..." 
+                    {...otherProps}
+                />
             </FormGroup>
-            {(state.query.length > 0) &&
+            
+            {state.physicians.length > 0 && (
                 <FormGroup>
-                    <List className="md-list">
+                    <List className="md-list mt-2">
                         {state.physicians.map((physician, index) => (
                             <ListButton
-                                key={index}
-                                name={name}
-                                value={Username({ user: physician })}
-                                handleClick={handleClick}
+                                key={physician.id || index}
+                                name={name} 
+                                value={Username({ user: physician })} 
+                                onClick={handleClick}
                             >
                                 <PhysicianItem
-                                    session={props.session}
+                                    session={session} 
                                     user={physician} 
-                                    clickable={true}
+                                    clickable={false} 
                                 />
                             </ListButton>
                         ))}
                     </List>
-                    <AutoLoader callback={appendPhysicians} />
                 </FormGroup>
-            }
+            )}
         </>
     );
 }

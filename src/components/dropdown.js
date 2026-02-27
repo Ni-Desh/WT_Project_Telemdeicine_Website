@@ -2,7 +2,6 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useExtendClass } from './hooks';
 
-
 export function Dropdown(props) {
     return (
         <div className={useExtendClass("dropdown", props.className)}>
@@ -10,7 +9,6 @@ export function Dropdown(props) {
         </div>
     );
 }
-
 
 export function DropdownButton(props) {
     return (
@@ -21,7 +19,6 @@ export function DropdownButton(props) {
         </button>
     );
 }
-
 
 export function DropdownButtonToggle(props) {
     return (
@@ -48,13 +45,15 @@ export function DropdownMenuDivider(props) {
     );
 }
 
+// FIXED: Added props.url || "#" to prevent the 'to' is undefined error
 export function DropdownMenuLink(props) {
     return (
         <Link 
-            to={props.url} exact={props.exact}
+            to={props.url || "#"} 
+            exact={props.exact}
             className={useExtendClass("dropdown-item", props.className)}
         >
-                {props.children}
+            {props.children}
         </Link>
     );
 }
@@ -63,7 +62,7 @@ export function DropdownMenuButton(props) {
     return (
         <button type="button" onClick={props.handleClick}
             className={useExtendClass("dropdown-item", props.className)}
-                name={props.name} value={props.value} disabled={Boolean(props.disabled)}
+            name={props.name} value={props.value} disabled={Boolean(props.disabled)}
         >
             {props.children}
         </button>

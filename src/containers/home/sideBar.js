@@ -6,20 +6,17 @@ import { LgIcon, XlIcon } from '../../components/icons';
 import { Col, Row, RowDivider } from '../../components/layout';
 import { Nav, NavBar, NavBrand } from '../../components/navs';
 
-
 function AppLogo(props) {
     return (
         "Medicus"
     );
 }
 
-
 function SectionDivider(props) {
     return (
         <RowDivider className="px-1" />
     );
 }
-
 
 function LinkSection(props) {
     return (
@@ -31,7 +28,6 @@ function LinkSection(props) {
     );
 }
 
-
 function Links(props) {
     return (
         <Nav className="md-links flex-column">
@@ -39,7 +35,6 @@ function Links(props) {
         </Nav>
     );
 }
-
 
 function Link(props) {
     return (
@@ -54,7 +49,6 @@ function Link(props) {
         </NavLink>
     );
 }
-
 
 function TopLinks(props) {
     const links = [];
@@ -85,7 +79,6 @@ function TopLinks(props) {
     );
 }
 
-
 function ExtraLinks(props) {
     const links = [];
     links.push({ path: `/users/${props.session.username}`, title: "Profile", icon: "person" });
@@ -108,7 +101,6 @@ function ExtraLinks(props) {
         </Links>
     );
 }
-
 
 function DefaultLinks(props) {
     const dispatch = useDispatch();
@@ -157,16 +149,15 @@ function DefaultLinks(props) {
     );
 }
 
-
 function SideBarCloseButton(props) {
     return (
         <button id={props.id} type="button" data-dismiss="modal" aria-label="Close"
-            class={useExtendClass("p-2 d-flex align-items-center", props.className)}>
+            // FIXED: Changed 'class' to 'className'
+            className={useExtendClass("p-2 d-flex align-items-center", props.className)}>
             <LgIcon>clear</LgIcon>
         </button>
     );
 }
-
 
 export default function SideBar(props) {
     const session = useSelector(s => s.session);
@@ -216,7 +207,6 @@ export default function SideBar(props) {
     );
 }
 
-
 export function ModalSideBar(props) {
     const modalRef = useRef(null);
 
@@ -228,7 +218,7 @@ export function ModalSideBar(props) {
     }
 
     return (
-        <div ref={modalRef} id={props.id} tabindex="-1" role="dialog"
+        <div ref={modalRef} id={props.id} tabIndex="-1" role="dialog"
             className="md-mdl-sdbar modal fade" aria-hidden="true">
             <div className="modal-dialog h-100 my-0 ml-0 d-flex" role="document">
                 <div className="modal-content flex-grow-1">

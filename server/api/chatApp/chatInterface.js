@@ -1,5 +1,6 @@
-import socketIO from "socket.io"
-import MessageDAO from "../../dao/messageDAO"
+import mongodb from 'mongodb';
+const { socketIO } = mongodb;
+import MessageDAO from "../../dao/messageDAO.js"
 
 
 export default class ChatInterface {

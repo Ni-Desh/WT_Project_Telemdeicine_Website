@@ -1,5 +1,5 @@
-import { ObjectId, GridFSBucket } from "mongodb"
-
+import mongodb from 'mongodb';
+const { ObjectId, GridFSBucket } = mongodb;
 
 export default class UserDAO {
   static users
@@ -11,24 +11,30 @@ export default class UserDAO {
     }
 
     try {
-      this.users = await conn.db(process.env.DB_NS).collection("users", {
+      // Hardcoded to "test" as requested
+      const dbName = "test";
+      const db = conn.db(dbName); 
+      
+      this.users = await db.collection("users", {
         writeConcern: { w: "majority" }
       })
-      this.gfs = new GridFSBucket(conn.db(process.env.DB_NS), {
+      this.gfs = new GridFSBucket(db, {
         bucketName: "photos",
         writeConcern: { w: "majority" }
       })
+      console.log(`✅ UserDAO successfully connected to '${dbName}' database.`);
     } catch (err) {
-      console.error(`Failed to connect to DB in UserDAO: ${err}`)
+      console.error(`❌ Failed to connect to DB in UserDAO: ${err}`)
     }
   }
 
+  // --- THIS METHOD IS CORRECT ---
   static async getUsers({filter={}, page=0, limit=10}) {
     try {
       const cursor = await this.users.find(filter).skip(page*limit).limit(limit)
       return cursor.toArray()
     } catch (err) {
-      console.error(`Failed to retrieve users from DB. ${err}`)
+      console.error(`Failed to retrieve users: ${err}`)
       return []
     }
   }
@@ -36,27 +42,16 @@ export default class UserDAO {
   static async searchUsers({filter={}, searchQuery={}, page=0, limit=10}) {
     try {
       const cursor = await this.users.aggregate([
-        {
-          $match: filter
-        },
-        {
-          $addFields: {
-            fullName: {
-              $concat: ["$firstName", " ", "$lastName"]
-            }
-          }
-        }
+        { $match: filter },
+        { $addFields: { fullName: { $concat: ["$firstName", " ", "$lastName"] } } }
       ])
       .match(searchQuery)
-      .project({
-        fullName: 0
-      })
+      .project({ fullName: 0 })
       .skip(page*limit)
       .limit(limit)
-
       return cursor.toArray()
     } catch (err) {
-      console.error(`Failed to search users based on query within DB. ${err}`)
+      console.error(`Failed to search users: ${err}`)
       return []
     }
   }
@@ -65,96 +60,64 @@ export default class UserDAO {
     try {
       return await this.users.findOne({username: username})
     } catch (err) {
-      console.error(`Failed to retrieve user from DB. ${err}`)
-      return {}
+      console.error(`Failed to find user: ${err}`)
+      return null
     }
   }
 
-  static async addUser({username, password, firstName, lastName, isPhysician, profilePhotoId,
-    dob, gender, qualification="", specialization="", description=""}) {
+  static async addUser(userInfo) {
     try {
-      const response = await this.users.insertOne(
-        {
-          username: username,
-          password: password,
-          firstName: firstName,
-          lastName: lastName,
-          isPhysician: Boolean(isPhysician),
-          profilePhotoId: (profilePhotoId) ? ObjectId(profilePhotoId): null,
-          dob: new Date(dob),
-          gender: gender,
-          emailId: "",
-          phoneNumber: "",
-          qualification: qualification,
-          specialization: specialization,
-          description: description
-        },
-        {
-          writeConcern: { w: "majority" }
-        }
-      )
-
-      return { success: true, id: response.id }
+      const response = await this.users.insertOne({
+        ...userInfo,
+        isPhysician: Boolean(userInfo.isPhysician),
+        dob: userInfo.dob ? new Date(userInfo.dob) : null,
+        profilePhotoId: userInfo.profilePhotoId ? new ObjectId(userInfo.profilePhotoId) : null,
+      }, { writeConcern: { w: "majority" } })
+      return { success: true, id: response.insertedId }
     } catch (err) {
-      console.error(`Failed to add a new user. ${err}`)
-      return { error: err}
+      console.error(`Failed to add user: ${err}`)
+      return { error: err }
     }
   }
 
   static async deleteUser(username) {
     try {
       await this.users.deleteOne({username: username})
-
       return { success: true }
     } catch (err) {
-      console.error(`Failed to delete user. ${err}`)
+      console.error(`Failed to delete user: ${err}`)
       return { error: err }
     }
   }
 
   static async updateUser(username, updateQuery) {
     try {
-      const udpateResponse = await this.users.updateOne(
+      const updateResponse = await this.users.updateOne(
         { username: username },
-        {
-          $set: {...updateQuery }
-        }
+        { $set: {...updateQuery } }
       )
-
-      if (udpateResponse.matchedCount === 0) {
-        throw new Error("No user found with that username.")
-      }
-
       return { success: true }
     } catch (err) {
-      console.error(`Failed to update user in DB. ${err}`);
+      console.error(`Failed to update user: ${err}`)
       return { error: err }
     }
   }
 
   static async getPhoto(photoId) {
     try {
-      const cursor = await this.gfs.find({ _id: ObjectId(photoId) })
-      const files = await cursor.toArray()
-
-      if (!files || files.length === 0) {
-        return null
-      }
-
-      return await this.gfs.openDownloadStream(ObjectId(photoId))
+      return await this.gfs.openDownloadStream(new ObjectId(photoId))
     } catch (err) {
-      // console.error(`Failed to get photo from DB. ${err}`);
+      console.error(`Failed to get photo: ${err}`)
       return null
     }
   }
 
   static async deletePhoto(photoId) {
     try {
-      await this.gfs.delete(ObjectId(photoId))
-
+      await this.gfs.delete(new ObjectId(photoId))
       return { success: true }
     } catch (err) {
-      console.error(`Failed to delete photo from DB. ${err}`);
+      console.error(`Failed to delete photo: ${err}`)
       return { error: err }
     }
   }

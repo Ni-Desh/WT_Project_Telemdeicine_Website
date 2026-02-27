@@ -1,8 +1,11 @@
 import { Router } from "express"
-import AppointmentCtrl from "./controller"
-
+import AppointmentCtrl from "./controller.js"
 
 const router = new Router()
+
+// NEW: Availability endpoint for the "Red/Green" logic
+router.route('/booked')
+  .get(AppointmentCtrl.getBookedSlots)
 
 router.route('/')
   .get(AppointmentCtrl.getAppointments)

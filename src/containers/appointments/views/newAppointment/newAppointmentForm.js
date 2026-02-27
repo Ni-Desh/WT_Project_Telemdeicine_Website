@@ -1,153 +1,118 @@
-import React, { useEffect, useState } from 'react';
-import { Redirect } from 'react-router-dom';
-import { Form } from '../../../../components/form';
-import { isValidDate } from '../../../../components/dates';
-
-import ProgressBar from './progress';
+import React, { useState } from 'react';
 import PhysicianSection from './physicianSection';
-import ServiceSection from './serviceSection';
 import InfoSection from './infoSection';
 
-
 export default function NewAppointmentForm(props) {
-    const minSteps = 1;
-    const maxSteps = 3;
-
+    const [currentStep, setCurrentStep] = useState(1);
+    const [errorMessage, setErrorMessage] = useState("");
     const [fields, setFields] = useState({
-        currentStep: minSteps,
-        navigateToAppointments: false,
-        errorMessage: '',
-        physician: '',
-        service: '',
-        startDate: '',
-        startTime: "00:00",
-        endDate: '',
-        endTime: "00:00",
-        description: ''
+        physician: props.physician || "",
+        title: "",
+        description: "",
+        startDate: "", 
+        startTime: "",
+        endDate: "",
+        endTime: ""
     });
 
-    useEffect(() => {
-        if (fields.service || fields.physician) {
-            setFields(prevFields => {
-                return {
-                    ...fields,
-                    currentStep: prevFields.currentStep + 1
-                }
-            });
-        }
-    }, [fields.physician, fields.service]);
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFields(prev => ({
+            ...prev,
+            [name]: value
+        }));
+    };
 
-    async function handleChange(e) {
-        setFields({
-            ...fields,
-            [e.currentTarget.name]: e.currentTarget.value
-        });
-    }
+    const handleClick = (e) => {
+        const name = e.currentTarget.name; 
+        const value = e.currentTarget.value;
 
-    async function handleSubmit(e) {
-        e.preventDefault();
-        if (fields.currentStep === maxSteps) {
-            try {
-                const [ startHour, startMinutes ] = fields.startTime.split(':').map(t => parseInt(t));
-                const [ endHour, endMinutes ] = fields.endTime.split(':').map(t => parseInt(t));
-    
-                const appointmentStartTime = new Date(fields.startDate);
-                appointmentStartTime.setHours(startHour);
-                appointmentStartTime.setMinutes(startMinutes);
+        if (name && value) {
+            setFields(prev => ({
+                ...prev,
+                [name]: value
+            }));
 
-                if (!isValidDate(appointmentStartTime)) {
-                    throw new Error("Invalid Start time. Must be a valid date.");
-                }
-
-                const appointmentEndTime = new Date(fields.endDate);
-                appointmentEndTime.setHours(endHour);
-                appointmentEndTime.setMinutes(endMinutes);
-
-                if (!isValidDate(appointmentEndTime)) {
-                    throw new Error("Invalid End time. Must be a valid date.");
-                }
-
-                if (appointmentEndTime <= appointmentStartTime) {
-                    throw new Error("Appointment End time cannot be before its Start time.");
-                }
-    
-                const response = await fetch(`/api/appointments`, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${props.session.authToken}`
-                    },
-                    body: JSON.stringify({
-                      title: fields.title,
-                      patient: props.session.username,
-                      physician: fields.physician,
-                      serviceId: fields.service,
-                      startTime: appointmentStartTime,
-                      endTime: appointmentEndTime,
-                      description: fields.description
-                    })
-                });
-    
-                let data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.message);
-                }
-    
-                setFields({
-                    ...fields,
-                    navigateToAppointments: true
-                });
-            } catch (err) {
-                console.error(`Failed to add a new appointment: ${err.message}`);
-                setFields({
-                    ...fields,
-                    errorMessage: err.message
-                });
+            if (name === "physician") {
+                setCurrentStep(2);
             }
         }
-    }
+    };
 
-    if (fields.navigateToAppointments === true) {
-        return <Redirect to="/appointments" />
-      }
+    const handleFinalize = async (e) => {
+        if (e) e.preventDefault();
+        
+        if (!fields.startDate || !fields.startTime) {
+            setErrorMessage("Please select both a date and a time slot.");
+            return;
+        }
+
+        try {
+            // BACKEND POST CALL
+            const response = await fetch('/api/appointments/new', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(fields)
+            });
+
+            if (response.ok) {
+                alert(`Success! Appointment confirmed for ${fields.title}.`);
+                // Reset or redirect after success
+                window.location.reload(); 
+            } else {
+                const errorData = await response.json();
+                setErrorMessage(errorData.error || "Booking failed.");
+            }
+        } catch (err) {
+            setErrorMessage("Unable to connect to the server.");
+        }
+    };
+
+    const prevStep = () => setCurrentStep(prev => prev - 1);
 
     return (
-        <Form className="md-nw-appt" handleSubmit={handleSubmit}>
-            <ProgressBar 
-                className="mb-3"
-                value={fields.currentStep}
-                minValue={minSteps}
-                maxValue={maxSteps}
-            />
-            <PhysicianSection
-                currentStep={fields.currentStep}
-                id="newAppt01"
-                session={props.session}
-                name="physician"
-                handleClick={handleChange}
-                physician={fields.physician}
-            />
-            <ServiceSection 
-                currentStep={fields.currentStep}
-                id="newAppt02"
-                session={props.session}
-                name="service"
-                handleClick={handleChange}
-                physician={fields.physician}
-            />
-            <InfoSection
-                currentStep={fields.currentStep}
-                session={props.session}
-                handleChange={handleChange}
-                title={fields.title}
-                startDate={fields.startDate}
-                startTime={fields.startTime}
-                endDate={fields.endDate}
-                endTime={fields.endTime}
-                description={fields.description}
-                errorMessage={fields.errorMessage}
-            />
-        </Form>
+        <div className="md-new-appt-form p-3">
+            {currentStep === 1 && (
+                <PhysicianSection
+                    session={props.session}
+                    currentStep={currentStep}
+                    name="physician"
+                    handleClick={handleClick} 
+                />
+            )}
+
+            {currentStep === 2 && (
+                <div className="animation-fade-in">
+                    <div className="text-center mb-4">
+                        <h5 className="mb-1">Appointment Details</h5>
+                        <p className="text-muted small">Fill in the information below</p>
+                    </div>
+
+                    <div className="alert alert-info d-flex justify-content-between align-items-center py-2 px-3">
+                        <span>Selected Physician: <strong>Dr. {fields.physician}</strong></span>
+                        <button className="btn btn-sm btn-link p-0" onClick={() => setCurrentStep(1)}>Change</button>
+                    </div>
+                    
+                    <form onSubmit={handleFinalize} noValidate>
+                        <InfoSection 
+                            currentStep={currentStep}
+                            physician={fields.physician}
+                            title={fields.title}
+                            description={fields.description}
+                            startDate={fields.startDate}
+                            startTime={fields.startTime}
+                            endDate={fields.endDate}
+                            endTime={fields.endTime}
+                            handleChange={handleChange}
+                            errorMessage={errorMessage}
+                        />
+                    </form>
+
+                    <div className="mt-4 d-flex justify-content-start">
+                        <button type="button" className="btn btn-outline-secondary" onClick={prevStep}>Back</button>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }

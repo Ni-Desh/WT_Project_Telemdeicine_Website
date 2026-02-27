@@ -1,79 +1,60 @@
 import { Router } from "express"
-import UserCtrl from "./userController"
-import AuthCtrl from "./authController"
-import FileUploader from "../../storage"
+import UserController from "./userController.js"
+import FileUploader from "../../storage.js"
 
 const authRouter = new Router();
 const userRouter = new Router();
 
-// Authentication Router
-authRouter.route('/register')
-  .post(AuthCtrl.register)
-
-authRouter.route('/signin')
-  .post(AuthCtrl.signIn)
-
-authRouter.route('/signout')
-  .get(AuthCtrl.signOut)
-
-authRouter.route('/password')
-  .put(AuthCtrl.updatePassword)
-
+// Authentication Router - Fixed to use UserController
+authRouter.route('/register').post(UserController.signup)
+authRouter.route('/signin').post(UserController.signin)
+authRouter.route('/signout').get(UserController.logout)
 
 // User Router
-userRouter.route('/')
-  .get(UserCtrl.getUsers)
+userRouter.route('/').get(UserController.getUsers)
 
 userRouter.route('/:username')
-  .get(UserCtrl.getUser)
-  .delete(UserCtrl.deleteUser)
-  .put(UserCtrl.updateUser)
+  .get(UserController.getUser)
+  .delete(UserController.deleteUser) // Line 35 - Fixed reference
+  .put(UserController.updateUser)
 
 userRouter.route('/:username/photos')
-  .post(FileUploader.single("data"), UserCtrl.addPhoto)
+  .post(FileUploader.single("data"), UserController.addPhoto)
 
 userRouter.route('/:username/photos/:id')
-  .get(UserCtrl.getPhoto)
-  .delete(UserCtrl.deletePhoto)
+  .get(UserController.getPhoto)
+  .delete(UserController.deletePhoto)
 
 userRouter.route('/:username/degrees')
-  .get(UserCtrl.getDegrees)
-  .post(UserCtrl.addDegree)
+  .get(UserController.getDegrees)
+  .post(UserController.addDegree)
 
 userRouter.route('/:username/degrees/:id')
-  .delete(UserCtrl.deleteDegree)
+  .delete(UserController.deleteDegree)
 
 userRouter.route('/:username/jobs')
-  .get(UserCtrl.getJobs)
-  .post(UserCtrl.addJob)
+  .get(UserController.getJobs)
+  .post(UserController.addJob)
 
 userRouter.route('/:username/jobs/:id')
-  .delete(UserCtrl.deleteJob)
+  .delete(UserController.deleteJob)
 
 userRouter.route('/:username/services')
-  .get(UserCtrl.getServices)
-  .post(UserCtrl.addService)
+  .get(UserController.getServices)
+  .post(UserController.addService)
 
 userRouter.route('/:username/services/:id')
-  .delete(UserCtrl.deleteService)
+  .delete(UserController.deleteService)
 
 userRouter.route('/:username/insurances')
-  .get(UserCtrl.getInsurances)
-  .post(UserCtrl.addInsurance)
+  .get(UserController.getInsurances)
+  .post(UserController.addInsurance)
 
 userRouter.route('/:username/insurances/:id')
-  .delete(UserCtrl.deleteInsurance)
+  .delete(UserController.deleteInsurance)
 
-  userRouter.route('/:username/payments')
-    .get(UserCtrl.getPayments)
-
-userRouter.route('/:username/labReports')
-  .get(UserCtrl.getReports)
-
-userRouter.route('/:username/medications')
-  .get(UserCtrl.getMedications)
-
-// router.get('/user/:username', utils.limiter, utils.speedLimiter, authCtrl.getUser);
-// router.use('/example-path', example); ==> to be routed to: api/chosen_path for example
+userRouter.route('/:username/payments').get(UserController.getPayments)
+userRouter.route('/:username/labReports').get(UserController.getReports)
+userRouter.route('/:username/medications').get(UserController.getMedications)
 
 export { authRouter, userRouter }
